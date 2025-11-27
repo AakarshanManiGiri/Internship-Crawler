@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 
-from sympy import Dict, List
+from typing import Dict, List
 from scrapers.base_scraper import BaseScraper
 
 class GoogleScraper(BaseScraper):

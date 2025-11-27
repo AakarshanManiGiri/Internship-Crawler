@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 from scrapers.base_scraper import BaseScraper
-from sympy import Dict, List
+from typing import Dict, List
 class MetaScraper(BaseScraper):
     
     def get_company_name(self) -> str:
