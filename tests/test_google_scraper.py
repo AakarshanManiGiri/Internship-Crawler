@@ -1,3 +1,325 @@
+import types
+
+
+class FakeInnerLocator:
+    def __init__(self, text=None, href=None):
+        self._text = text
+        self._href = href
+
+    def inner_text(self, timeout=None):
+        return self._text or ''
+
+    def get_attribute(self, name):
+        if name == 'href':
+            return self._href
+        return None
+
+
+class FakeCard:
+    def __init__(self, title=None, location=None, href=None):
+        self._title = title
+        self._location = location
+        self._href = href
+
+    def locator(self, selector):
+        # Return an inner locator that supports inner_text/get_attribute
+        if selector == 'h2':
+            return FakeInnerLocator(text=self._title)
+        if selector == "div[jsname='GZq3Ke']":
+            return FakeInnerLocator(text=self._location)
+        if selector == 'a':
+            return FakeInnerLocator(href=self._href)
+        return FakeInnerLocator()
+
+
+class FakeLocatorCollection:
+    def __init__(self, cards):
+        self._cards = cards
+
+    def count(self):
+        return len(self._cards)
+
+    def nth(self, i):
+        return self._cards[i]
+
+
+class FakeMouse:
+    def wheel(self, x, y):
+        return None
+
+
+class FakePage:
+    def __init__(self, cards, raise_on_wait=False, wait_exc=None):
+        self._cards = cards
+        self._raise = raise_on_wait
+        self._wait_exc = wait_exc
+        self.mouse = FakeMouse()
+
+    def goto(self, url, timeout=None):
+        return None
+
+    def wait_for_selector(self, selector, timeout=None):
+        if self._raise:
+            raise self._wait_exc or Exception('timeout')
+        return None
+
+    def locator(self, selector):
+        # Only support the gc-card locator used in the scraper
+        if selector == 'gc-card':
+            return FakeLocatorCollection(self._cards)
+        # Fallback to empty collection
+        return FakeLocatorCollection([])
+
+    # For debug helpers in other code paths
+    def screenshot(self, path=None, full_page=False):
+        return None
+
+    def content(self):
+        return '<html></html>'
+
+
+class FakeBrowser:
+    def __init__(self, page):
+        self._page = page
+
+    def new_page(self):
+        return self._page
+
+    def close(self):
+        return None
+
+
+class FakeChromium:
+    def __init__(self, browser):
+        self._browser = browser
+
+    def launch(self, headless=True):
+        return self._browser
+
+
+class FakeSyncPlaywrightCtx:
+    def __init__(self, chromium):
+        self.chromium = chromium
+
+    def __enter__(self):
+        return types.SimpleNamespace(chromium=self.chromium)
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def test_google_playwright_parses_jobs(monkeypatch):
+    # Two cards: one intern, one non-intern
+    card1 = FakeCard(title='Software Engineering Intern', location='Sydney, Australia', href='/jobs/results/123')
+    card2 = FakeCard(title='Senior Software Engineer', location='Mountain View, CA', href='/jobs/results/999')
+
+    page = FakePage([card1, card2])
+    browser = FakeBrowser(page)
+    chromium = FakeChromium(browser)
+    ctx = FakeSyncPlaywrightCtx(chromium)
+
+    import scrapers.google as google_mod
+    # Ensure tests use Playwright path
+    monkeypatch.setattr(google_mod, 'PLAYWRIGHT_AVAILABLE', True)
+    monkeypatch.setattr(google_mod, 'sync_playwright', lambda: ctx)
+
+    from scrapers.google import GoogleScraper
+
+    gs = GoogleScraper()
+    results = gs.scrape()
+
+    assert isinstance(results, list)
+    assert len(results) == 1
+    job = results[0]
+    assert job['title'] == 'Software Engineering Intern'
+    assert 'Sydney' in job['location']
+    assert job['url'].endswith('/jobs/results/123')
+
+
+def test_google_playwright_timeout_fallback(monkeypatch):
+    # Simulate wait_for_selector raising PlaywrightTimeout
+    import scrapers.google as google_mod
+
+    class TimeoutExc(Exception):
+        pass
+
+    # Create a page that raises timeout
+    page = FakePage([], raise_on_wait=True, wait_exc=TimeoutExc())
+    browser = FakeBrowser(page)
+    chromium = FakeChromium(browser)
+    ctx = FakeSyncPlaywrightCtx(chromium)
+
+    monkeypatch.setattr(google_mod, 'PLAYWRIGHT_AVAILABLE', True)
+    monkeypatch.setattr(google_mod, 'sync_playwright', lambda: ctx)
+    # Ensure scraper recognizes Playwright's timeout exception symbol
+    monkeypatch.setattr(google_mod, 'PlaywrightTimeout', TimeoutExc, raising=False)
+
+    from scrapers.google import GoogleScraper
+
+    gs = GoogleScraper()
+    results = gs.scrape()
+    assert results == []
+import types
+
+
+class FakeInnerLocator:
+    def __init__(self, text=None, href=None):
+        self._text = text
+        self._href = href
+
+    def inner_text(self, timeout=None):
+        return self._text or ''
+
+    def get_attribute(self, name):
+        if name == 'href':
+            return self._href
+        return None
+
+
+class FakeCard:
+    def __init__(self, title=None, location=None, href=None):
+        self._title = title
+        self._location = location
+        self._href = href
+
+    def locator(self, selector):
+        # Return an inner locator that supports inner_text/get_attribute
+        if selector == 'h2':
+            return FakeInnerLocator(text=self._title)
+        if selector == "div[jsname='GZq3Ke']":
+            return FakeInnerLocator(text=self._location)
+        if selector == 'a':
+            return FakeInnerLocator(href=self._href)
+        return FakeInnerLocator()
+
+
+class FakeLocatorCollection:
+    def __init__(self, cards):
+        self._cards = cards
+
+    def count(self):
+        return len(self._cards)
+
+    def nth(self, i):
+        return self._cards[i]
+
+
+class FakeMouse:
+    def wheel(self, x, y):
+        return None
+
+
+class FakePage:
+    def __init__(self, cards, raise_on_wait=False, wait_exc=None):
+        self._cards = cards
+        self._raise = raise_on_wait
+        self._wait_exc = wait_exc
+        self.mouse = FakeMouse()
+
+    def goto(self, url, timeout=None):
+        return None
+
+    def wait_for_selector(self, selector, timeout=None):
+        if self._raise:
+            raise self._wait_exc or Exception('timeout')
+        return None
+
+    def locator(self, selector):
+        # Only support the gc-card locator used in the scraper
+        if selector == 'gc-card':
+            return FakeLocatorCollection(self._cards)
+        # Fallback to empty collection
+        return FakeLocatorCollection([])
+
+    # For debug helpers in other code paths
+    def screenshot(self, path=None, full_page=False):
+        return None
+
+    def content(self):
+        return '<html></html>'
+
+
+class FakeBrowser:
+    def __init__(self, page):
+        self._page = page
+
+    def new_page(self):
+        return self._page
+
+    def close(self):
+        return None
+
+
+class FakeChromium:
+    def __init__(self, browser):
+        self._browser = browser
+
+    def launch(self, headless=True):
+        return self._browser
+
+
+class FakeSyncPlaywrightCtx:
+    def __init__(self, chromium):
+        self.chromium = chromium
+
+    def __enter__(self):
+        return types.SimpleNamespace(chromium=self.chromium)
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def test_google_playwright_parses_jobs(monkeypatch):
+    # Two cards: one intern, one non-intern
+    card1 = FakeCard(title='Software Engineering Intern', location='Sydney, Australia', href='/jobs/results/123')
+    card2 = FakeCard(title='Senior Software Engineer', location='Mountain View, CA', href='/jobs/results/999')
+
+    page = FakePage([card1, card2])
+    browser = FakeBrowser(page)
+    chromium = FakeChromium(browser)
+    ctx = FakeSyncPlaywrightCtx(chromium)
+
+    import scrapers.google as google_mod
+    # Ensure tests use Playwright path
+    monkeypatch.setattr(google_mod, 'PLAYWRIGHT_AVAILABLE', True)
+    monkeypatch.setattr(google_mod, 'sync_playwright', lambda: ctx)
+
+    from scrapers.google import GoogleScraper
+
+    gs = GoogleScraper()
+    results = gs.scrape()
+
+    assert isinstance(results, list)
+    assert len(results) == 1
+    job = results[0]
+    assert job['title'] == 'Software Engineering Intern'
+    assert 'Sydney' in job['location']
+    assert job['url'].endswith('/jobs/results/123')
+
+
+def test_google_playwright_timeout_fallback(monkeypatch):
+    # Simulate wait_for_selector raising PlaywrightTimeout
+    import scrapers.google as google_mod
+
+    class TimeoutExc(Exception):
+        pass
+
+    # Create a page that raises timeout
+    page = FakePage([], raise_on_wait=True, wait_exc=TimeoutExc())
+    browser = FakeBrowser(page)
+    chromium = FakeChromium(browser)
+    ctx = FakeSyncPlaywrightCtx(chromium)
+
+    monkeypatch.setattr(google_mod, 'PLAYWRIGHT_AVAILABLE', True)
+    monkeypatch.setattr(google_mod, 'sync_playwright', lambda: ctx)
+    # Ensure scraper recognizes Playwright's timeout exception symbol
+    monkeypatch.setattr(google_mod, 'PlaywrightTimeout', TimeoutExc, raising=False)
+
+    from scrapers.google import GoogleScraper
+
+    gs = GoogleScraper()
+    results = gs.scrape()
+    assert results == []
 from scrapers.google import GoogleScraper
 
 
