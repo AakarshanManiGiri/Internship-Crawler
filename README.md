@@ -117,7 +117,7 @@ python main.py
 #### 1. Clone and Setup Environment
 
 ```bash
-git clone https://github.com/yourusername/internship-crawler.git
+git clone https://github.com/AakarshanManiGiri/internship-crawler.git
 cd internship-crawler
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
@@ -621,9 +621,9 @@ SOFTWARE.
 
 ## Support
 
--  **Bug Reports**: [Open an issue](https://github.com/yourusername/internship-crawler/issues)
--  **Feature Requests**: [Open an issue](https://github.com/yourusername/internship-crawler/issues)
--  **Questions**: [Discussions](https://github.com/yourusername/internship-crawler/discussions)
+-  **Bug Reports**: [Open an issue](https://github.com/AakarshanManiGiri/internship-crawler/issues)
+-  **Feature Requests**: [Open an issue](https://github.com/AakarshanManiGiri/internship-crawler/issues)
+-  **Questions**: [Discussions](https://github.com/AakarshanManiGiri/internship-crawler/discussions)
 
 ---
 
