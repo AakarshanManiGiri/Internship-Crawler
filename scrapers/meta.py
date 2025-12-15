@@ -15,7 +15,7 @@ class MetaScraper(BaseScraper):
         return "Meta"
     
     def get_careers_url(self) -> str:
-        return "https://www.metacareers.com/jobs"
+        return "https://www.metacareers.com/jobsearch?roles[0]=Internship"
     
     def scrape(self) -> List[Dict]:
         """Scrape Meta's careers page"""

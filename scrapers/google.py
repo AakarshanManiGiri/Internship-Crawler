@@ -17,11 +17,11 @@ class GoogleScraper(BaseScraper):
         return "Google"
 
     def get_careers_url(self) -> str:
-        # Filter already set to internships only
-        return "https://careers.google.com/jobs/results/?employment_type=INTERN"
+        # Updated URL with correct filter for internships
+        return "https://www.google.com/about/careers/applications/jobs/results?target_level=INTERN_AND_APPRENTICE"
 
     def scrape(self) -> List[Dict]:
-        """Scrape Google Careers for internships (fully functional version)."""
+        """Scrape Google Careers for internships."""
 
         if not PLAYWRIGHT_AVAILABLE:
             print(f"  ⚠️ Playwright not available, skipping {self.company_name}")
@@ -37,9 +37,10 @@ class GoogleScraper(BaseScraper):
                 print(f"  → Navigating to {self.careers_url}")
                 page.goto(self.careers_url, timeout=45000)
 
-                # Ensure job cards start loading
+                # Wait for job cards to load
                 try:
-                    page.wait_for_selector("gc-card", timeout=15000)
+                    page.wait_for_selector("li.lLd3Je", timeout=15000)
+                    time.sleep(2)  # Extra wait for dynamic content
                 except PlaywrightTimeout:
                     print("  ⚠️ Timed out waiting for job cards.")
                     browser.close()
@@ -51,47 +52,70 @@ class GoogleScraper(BaseScraper):
                 print("  → Scrolling to load jobs...")
 
                 last_count = 0
-                for _ in range(20):  # up to 20 scroll cycles
+                for scroll_attempt in range(20):  # up to 20 scroll cycles
                     page.mouse.wheel(0, 5000)
-                    time.sleep(1.2)
+                    time.sleep(1.5)
 
-                    current_count = page.locator("gc-card").count()
-                    if current_count == last_count:
+                    current_count = page.locator("li.lLd3Je").count()
+                    
+                    if current_count == last_count and scroll_attempt > 3:
                         break
                     last_count = current_count
 
-                total_cards = page.locator("gc-card").count()
-                print(f"  → Loaded {total_cards} job cards.")
+                print(f"  → Loaded {last_count} job cards.")
 
                 # -------------------------------
                 #      PARSE EACH JOB CARD
                 # -------------------------------
-                for i in range(total_cards):
-                    card = page.locator("gc-card").nth(i)
+                
+                job_cards = page.locator("li.lLd3Je").all()
+                print(f"  → Found {len(job_cards)} job listings to parse.")
 
+                for i, card in enumerate(job_cards):
                     try:
-                        # Extract title (shadow DOM safe via locator)
-                        title = card.locator("h2").inner_text(timeout=2000).strip()
+                        # Extract title from h3.QJPWVe
+                        title = card.locator("h3.QJPWVe").inner_text(timeout=2000).strip()
 
                         # Internship filter
                         if not self.is_internship(title):
                             continue
 
-                        # Extract location
-                        # Google uses a utility container with jsname="GZq3Ke"
-                        location = (
-                            card.locator("div[jsname='GZq3Ke']")
-                            .inner_text(timeout=2000)
-                            .strip()
-                        )
+                        # Extract location from span.pwO9Dc
+                        location = "Not specified"
+                        try:
+                            # Get all location spans
+                            location_container = card.locator("span.pwO9Dc").first
+                            location_parts = location_container.locator("span.r0wTof").all()
+                            
+                            if location_parts:
+                                locations = [loc.inner_text(timeout=1000).strip() for loc in location_parts]
+                                # Check if there are more locations
+                                more_indicator = location_container.locator("span.BVHzed, span.Z2gFhf").count()
+                                if more_indicator > 0:
+                                    location = f"{'; '.join(locations[:2])}; +"
+                                else:
+                                    location = "; ".join(locations)
+                            else:
+                                # Fallback to getting all text
+                                location = location_container.inner_text(timeout=1000).strip()
+                        except:
+                            pass
 
-                        # Extract URL (Google uses relative hrefs)
-                        link = card.locator("a").get_attribute("href")
+                        # Extract URL from the anchor tag with class WpHeLc
+                        link = ""
+                        try:
+                            link = card.locator("a.WpHeLc").get_attribute("href", timeout=2000)
+                        except:
+                            continue
+
                         if not link:
                             continue
 
+                        # Handle relative URLs
                         if link.startswith("/"):
-                            url = f"https://careers.google.com{link}"
+                            url = f"https://www.google.com{link}"
+                        elif not link.startswith("http"):
+                            url = f"https://www.google.com/about/careers/applications/{link}"
                         else:
                             url = link
 
@@ -103,6 +127,8 @@ class GoogleScraper(BaseScraper):
                             "description": "",
                             "requirements": []
                         })
+
+                        print(f"  ✓ Found: {title[:50]}...")
 
                     except Exception as e:
                         print(f"  ⚠️ Error parsing card {i}: {e}")
