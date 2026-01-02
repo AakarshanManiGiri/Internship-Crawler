@@ -646,10 +646,3 @@ SOFTWARE.
 - [ ] Salary data tracking
 - [ ] Application deadline reminders
 
----
-
-## Star History
-
-If this project helped you land an internship, consider giving it a star! ⭐
-
----
