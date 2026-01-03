@@ -1,4 +1,6 @@
-#  Internship Crawler
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?text=Internship%20Crawler%20&type=waving&color=gradient&height=120"/>
+</p>
 
 > Automated Modular Web Crawler that tracks tech company internship postings and sends instant notifications when new positions go live.
 
@@ -644,10 +646,3 @@ SOFTWARE.
 - [ ] Salary data tracking
 - [ ] Application deadline reminders
 
----
-
-## Star History
-
-If this project helped you land an internship, consider giving it a star! ⭐
-
----
