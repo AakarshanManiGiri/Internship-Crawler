@@ -1,7 +1,7 @@
 import sqlite3
 from typing import List, Optional, Dict
 from models.internship import Internship
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class Database:
     def __init__(self, db_path: str = "internships.db"):
@@ -125,5 +125,66 @@ class Database:
         conn.close()
         
         return [{'id': row[0], 'email': row[1], 'preferences': row[2]} for row in rows]
+    
+    def get_internships_with_filters(self, country: Optional[str] = None, date_filter: Optional[str] = None) -> List[Internship]:
+        """Get internships with optional filtering by country and date range
+        
+        Args:
+            country: Filter by location/country (case-insensitive)
+            date_filter: Filter by date range ('past_hour', 'past_week', 'past_month')
+        
+        Returns:
+            List of filtered internships
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM internships WHERE 1=1"
+        params = []
+        
+        # Add country filter
+        if country:
+            query += " AND location LIKE ?"
+            params.append(f"%{country}%")
+        
+        # Add date filter
+        if date_filter:
+            now = datetime.now()
+            if date_filter == 'past_hour':
+                cutoff_date = now - timedelta(hours=1)
+            elif date_filter == 'past_week':
+                cutoff_date = now - timedelta(weeks=1)
+            elif date_filter == 'past_month':
+                cutoff_date = now - timedelta(days=30)
+            else:
+                cutoff_date = None
+            
+            if cutoff_date:
+                query += " AND datetime(posted_date) >= ?"
+                params.append(cutoff_date.isoformat())
+        
+        # Sort by posted_date descending (newest first)
+        query += " ORDER BY datetime(posted_date) DESC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        internships = []
+        for row in rows:
+            internships.append(Internship(
+                id=row[0],
+                company=row[1],
+                title=row[2],
+                location=row[3],
+                url=row[4],
+                posted_date=datetime.fromisoformat(row[5]),
+                description=row[6],
+                requirements=row[7].split(',') if row[7] else [],
+                created_at=datetime.fromisoformat(row[8]),
+                notified=bool(row[9])
+            ))
+        
+        return internships
 
 
