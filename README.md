@@ -635,7 +635,8 @@ SOFTWARE.
 - [x] Email notifications
 - [x] Modular scraper architecture
 - [x] Database persistence
-- [ ] Web dashboard
+- [x] API Setup
+- ~~[ ] Web dashboard~~ (Opted into a more backend focused project(will amend the Readme soon))
 - [ ] User authentication
 - [ ] Advanced filtering
 - [ ] Machine learning recommendations
