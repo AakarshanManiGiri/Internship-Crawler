@@ -25,7 +25,7 @@ Never miss an internship opportunity again! This tool automatically monitors car
 -  **Automated Scheduling** - Set it and forget it with cron jobs or Windows Task Scheduler
 -  **Seed Mode** - Populate database initially without spamming users
 
----
+
 
 ## Table of Contents
 
