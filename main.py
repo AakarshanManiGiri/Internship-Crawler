@@ -1,17 +1,28 @@
 from datetime import datetime
 import importlib
+import logging
 import os
 from pathlib import Path
 from database.db import Database
 from services.notification_service import NotificationService
 from scrapers.base_scraper import BaseScraper
 from models.internship import Internship
+from health_check import print_health_report
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 
 class CrawlerManager:
     def __init__(self):
         self.db = Database()
         self.notification_service = NotificationService()
         self.scrapers = []
+        logger.info("Initializing CrawlerManager")
         self._load_scrapers()
     
     def _load_scrapers(self):
@@ -36,53 +47,96 @@ class CrawlerManager:
                         scraper_instance = attr()
                         if scraper_instance.enabled:
                             self.scrapers.append(scraper_instance)
-                            print(f"Loaded scraper: {scraper_instance.company_name}")
+                            logger.info(f"✓ Loaded scraper: {scraper_instance.company_name}")
+                        else:
+                            logger.info(f"⊘ Scraper disabled: {scraper_instance.company_name}")
             
             except Exception as e:
-                print(f"Error loading scraper {file.name}: {e}")
+                logger.error(f"Error loading scraper {file.name}: {e}", exc_info=True)
     
     def run_crawl(self):
         """Run all scrapers and process results"""
-        print(f"\n{'='*50}")
-        print(f"Starting crawl at {datetime.now()}")
-        print(f"{'='*50}\n")
+        start_time = datetime.now()
+        logger.info("=" * 70)
+        logger.info(f"Starting crawl at {start_time}")
+        logger.info("=" * 70)
+        
+        if not self.scrapers:
+            logger.warning("No scrapers loaded!")
+            return
         
         new_internships = []
+        scrapers_run = 0
+        scrapers_failed = 0
         
         for scraper in self.scrapers:
-            print(f"Crawling {scraper.company_name}...")
-            positions = scraper.scrape()
-            
-            for position in positions:
-                internship = Internship(
-                    company=scraper.company_name,
-                    **position
-                )
+            try:
+                logger.info(f"\n→ Crawling {scraper.company_name}...")
+                positions = scraper.scrape()
+                scrapers_run += 1
                 
-                internship_id = self.db.save_internship(internship)
-                if internship_id:
-                    internship.id = internship_id
-                    new_internships.append(internship)
-                    print(f"  ✓ New: {internship.title}")
+                logger.info(f"  Processing {len(positions)} positions from {scraper.company_name}")
+                
+                for position in positions:
+                    try:
+                        internship = Internship(
+                            company=scraper.company_name,
+                            **position
+                        )
+                        
+                        internship_id = self.db.save_internship(internship)
+                        if internship_id:
+                            internship.id = internship_id
+                            new_internships.append(internship)
+                            logger.debug(f"  ✓ Saved: {internship.title}")
+                        else:
+                            logger.debug(f"  ⊘ Duplicate: {internship.title}")
+                    
+                    except Exception as e:
+                        logger.warning(f"  ✗ Error saving internship: {e}")
+                        continue
+            
+            except Exception as e:
+                scrapers_failed += 1
+                logger.error(f"✗ Scraper {scraper.company_name} failed: {e}", exc_info=True)
+                continue
         
-        print(f"\nFound {len(new_internships)} new internship(s)")
+        # Summary
+        elapsed = (datetime.now() - start_time).total_seconds()
+        logger.info("\n" + "=" * 70)
+        logger.info("CRAWL SUMMARY")
+        logger.info("=" * 70)
+        logger.info(f"Elapsed Time: {elapsed:.1f} seconds")
+        logger.info(f"Scrapers Run: {scrapers_run}/{len(self.scrapers)}")
+        logger.info(f"Scrapers Failed: {scrapers_failed}")
+        logger.info(f"New Internships Found: {len(new_internships)}")
         
         # Send notifications
         if new_internships:
-            users = self.db.get_all_users()
-            print(f"Notifying {len(users)} user(s)...")
+            try:
+                users = self.db.get_all_users()
+                logger.info(f"\n→ Notifying {len(users)} user(s)...")
+                
+                self.notification_service.notify_new_internships(new_internships, users)
+                
+                # Mark as notified
+                self.db.mark_as_notified([i.id for i in new_internships])
+                logger.info("✓ Notifications sent!")
             
-            self.notification_service.notify_new_internships(new_internships, users)
-            
-            # Mark as notified
-            self.db.mark_as_notified([i.id for i in new_internships])
-            print("Notifications sent!")
+            except Exception as e:
+                logger.error(f"Error sending notifications: {e}", exc_info=True)
         
-        print(f"\n{'='*50}")
-        print(f"Crawl completed at {datetime.now()}")
-        print(f"{'='*50}\n")
+        logger.info(f"\nCrawl completed at {datetime.now()}")
+        logger.info("=" * 70 + "\n")
+        
+        # Print health report
+        print_health_report()
 
 
 if __name__ == "__main__":
-    manager = CrawlerManager()
-    manager.run_crawl()
+    try:
+        manager = CrawlerManager()
+        manager.run_crawl()
+    except Exception as e:
+        logger.critical(f"Fatal error in crawler: {e}", exc_info=True)
+        raise

@@ -1,155 +1,206 @@
 from datetime import datetime
 from typing import Dict, List
-import json
-from urllib.parse import urljoin
 
 try:
-    from dateutil import parser as date_parser
-except Exception:
-    date_parser = None
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
 
 from scrapers.base_scraper import BaseScraper
+
+
 class MetaScraper(BaseScraper):
+    """
+    Meta Careers Scraper - Uses Playwright for JavaScript rendering
+    
+    IMPORTANT:
+    - Meta actively blocks scrapers and has explicit ToS against scraping
+    - This implementation uses browser automation which is more reliable than API
+    - May still be blocked by Meta's anti-bot measures
+    - Consider using LinkedIn API instead (Meta owns LinkedIn)
+    
+    Improvements:
+    - Uses Playwright instead of broken GraphQL endpoint
+    - Better error handling and logging
+    - Graceful degradation when selectors change
+    - Respects rate limiting
+    """
     
     def get_company_name(self) -> str:
         return "Meta"
     
     def get_careers_url(self) -> str:
-        return "https://www.metacareers.com/jobsearch?roles[0]=Internship"
+        return "https://www.metacareers.com/jobs/search/"
     
     def scrape(self) -> List[Dict]:
-        """Scrape Meta's careers page"""
-        positions = []
+        """Scrape Meta Careers using browser automation."""
         
+        if not PLAYWRIGHT_AVAILABLE:
+            error_msg = "Playwright not installed"
+            self.logger.warning(f"⚠️ {error_msg}")
+            self._record_error(error_msg)
+            return []
+
+        positions = []
+
         try:
-            # Meta uses a GraphQL backend (POST to /api/graphql/)
-            api_url = 'https://www.metacareers.com/api/graphql/'
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                )
+                page = context.new_page()
+                
+                page.set_default_timeout(30000)
+                page.set_default_navigation_timeout(30000)
 
-            # GraphQL query - filters can be customized
-            query = '''
-            query($search: String, $location: String) {
-              jobs(filters: {search_term: $search, location: $location}) {
-                id
-                title
-                location
-                apply_url
-                posted_date
-                description
-              }
-            }
-            '''
+                url = f"{self.get_careers_url()}?q=internship"
+                self.logger.info(f"→ Navigating to {url}")
 
-            # Try variables named to match service schema (e.g., search_term)
-            payload = {'query': query, 'variables': {'search_term': 'intern', 'location': ''}}
+                try:
+                    page.goto(url, wait_until="load")
+                except PlaywrightTimeout:
+                    self.logger.warning("Navigation timeout - page may still load")
 
-            headers = {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'User-Agent': self.session.headers.get('User-Agent'),
-                'X-Requested-With': 'XMLHttpRequest',
-                'Origin': 'https://www.metacareers.com'
-            }
+                # Wait for job listings to appear
+                try:
+                    page.wait_for_selector("li, div[role='option'], [data-testid*='job']", timeout=15000)
+                    self.logger.info("✓ Job listings loaded")
+                except PlaywrightTimeout:
+                    error_msg = "No job listings found - Meta may have changed structure or blocked request"
+                    self.logger.warning(error_msg)
+                    browser.close()
+                    self._record_error(error_msg)
+                    return []
 
-            # Try initial GraphQL POST
-            response = None
-            last_exc = None
+                # Scroll and extract jobs
+                positions = self._scroll_and_extract_meta(page)
+
+                browser.close()
+                
+                # Record success
+                if positions:
+                    self._record_success(len(positions))
+                    self.logger.info(f"✓ Extracted {len(positions)} internship positions")
+                else:
+                    self.logger.warning("No positions found")
+
+        except Exception as e:
+            error_msg = f"Error scraping {self.company_name}: {str(e)}"
+            self.logger.exception(error_msg)
+            self._record_error(error_msg)
+
+        return positions
+
+    def _scroll_and_extract_meta(self, page) -> List[Dict]:
+        """Extract job listings from Meta Careers page."""
+        positions = []
+        seen_urls = set()
+
+        max_scrolls = 8
+        no_new_jobs_threshold = 2
+        no_new_jobs_count = 0
+        
+        self.logger.info("→ Starting scroll and extract...")
+
+        for scroll_num in range(max_scrolls):
+            # Get all potential job cards
             try:
-                response = self.session.post(api_url, data=json.dumps(payload), headers=headers, timeout=10)
-                response.raise_for_status()
+                job_cards = page.query_selector_all("li, div[role='option']")
             except Exception as e:
-                last_exc = e
+                self.logger.warning(f"Could not query job cards: {e}")
+                job_cards = []
 
-                # Try a different payload style (inline query) and include common needed headers
-                inline_query = '''{ jobs(filters: {search_term: "intern", location: ""}) { id title location apply_url posted_date description } }'''
-                headers['Referer'] = self.careers_url
+            new_positions_this_scroll = 0
+
+            for idx, card in enumerate(job_cards):
                 try:
-                    response = self.session.post(api_url, data=json.dumps({'query': inline_query}), headers=headers, timeout=10)
-                    response.raise_for_status()
-                except Exception as e2:
-                    last_exc = e2
-                    response = None
+                    # Try to extract title with multiple selectors
+                    title_el = None
+                    for selector in ["h3", "h2", "[role='heading']", "span"]:
+                        try:
+                            els = card.query_selector_all(selector)
+                            if els:
+                                title_el = els[0]
+                                break
+                        except:
+                            pass
+                    
+                    if not title_el:
+                        continue
 
-            if response is None:
-                # Give a helpful error message but don't crash the whole crawler
-                print(f"{self.company_name}: GraphQL query failed: {last_exc}")
-                # Fallback: attempt to scrape the careers URL HTML (best-effort)
-                try:
-                    html_resp = self.session.get(f"{self.careers_url}?q=intern", timeout=10)
-                    html_resp.raise_for_status()
-                    from bs4 import BeautifulSoup
-                    soup = BeautifulSoup(html_resp.text, 'html.parser')
-                    # heuristics: try a few common selectors
-                    possible_cards = soup.select('.job-card, .job-list-item, .search-result, li.job')
-                    for card in possible_cards:
-                        title_el = card.select_one('.job-title, .title, h3, h2')
-                        if not title_el:
-                            continue
-                        title = title_el.text.strip()
-                        if not self.is_internship(title):
-                            continue
-                        url_el = card.select_one('a')
-                        url = url_el['href'] if url_el and url_el.get('href') else ''
-                        if url and not url.startswith('http'):
-                            url = urljoin(self.careers_url, url)
-                        loc_el = card.select_one('.job-location, .location')
+                    title = title_el.inner_text().strip()
+                    if not title or len(title) < 3:
+                        continue
 
-                        positions.append({
-                            'title': title,
-                            'location': loc_el.text.strip() if loc_el else '',
-                            'url': url,
-                            'posted_date': None,
-                            'description': (card.select_one('.job-description').text.strip() if card.select_one('.job-description') else ''),
-                            'requirements': []
-                        })
+                    # Check if internship
+                    if not self.is_internship(title):
+                        continue
 
-                except Exception as html_err:
-                    print(f"{self.company_name}: HTML fallback failed: {html_err}")
-                return positions
+                    # Extract URL
+                    url = None
+                    try:
+                        link_el = card.query_selector("a[href]")
+                        if link_el:
+                            url = link_el.get_attribute("href")
+                    except:
+                        pass
 
-            try:
-                result = response.json()
-            except ValueError:
-                print(f"{self.company_name}: GraphQL response not JSON")
-                return positions
+                    if not url or url in seen_urls:
+                        continue
 
-            jobs = result.get('data', {}).get('jobs', [])
+                    # Normalize URL
+                    if not url.startswith("http"):
+                        url = f"https://www.metacareers.com{url}"
 
-            for job in jobs:
-                title = job.get('title', '')
-                if not self.is_internship(title):
+                    seen_urls.add(url)
+
+                    # Extract location
+                    location = "Not specified"
+                    try:
+                        for el in card.query_selector_all("span, div"):
+                            text = el.inner_text().strip()
+                            # Look for location-like strings
+                            if any(word in text.lower() for word in [",", "city", "state", "usa", "remote"]):
+                                if len(text) < 100:  # Reasonable length for location
+                                    location = text
+                                    break
+                    except:
+                        pass
+
+                    positions.append({
+                        "title": title,
+                        "location": location,
+                        "url": url,
+                        "posted_date": datetime.now(),
+                        "description": "",
+                        "requirements": []
+                    })
+
+                    new_positions_this_scroll += 1
+                    self.logger.debug(f"✓ Found: {title[:50]}...")
+
+                except Exception as e:
+                    self.logger.debug(f"Skipped card {idx}: {e}")
                     continue
 
-                posted_date = None
-                if job.get('posted_date'):
-                    parsed = None
-                    if date_parser:
-                        try:
-                            parsed = date_parser.parse(job['posted_date'])
-                        except Exception:
-                            parsed = None
+            # Check if we found new positions
+            if new_positions_this_scroll == 0:
+                no_new_jobs_count += 1
+                if no_new_jobs_count >= no_new_jobs_threshold:
+                    self.logger.info(f"No new positions in {no_new_jobs_threshold} scrolls - stopping")
+                    break
+            else:
+                no_new_jobs_count = 0
+                self.logger.info(f"  Scroll {scroll_num + 1}: Found {new_positions_this_scroll} new positions")
 
-                    if parsed is None:
-                        try:
-                            parsed = datetime.fromisoformat(job['posted_date'])
-                        except Exception:
-                            parsed = None
+            # Scroll down
+            if scroll_num < max_scrolls - 1:
+                try:
+                    page.keyboard.press("End")
+                    page.wait_for_timeout(1500)
+                except:
+                    break
 
-                    posted_date = parsed
-
-                url = job.get('apply_url') or job.get('url') or job.get('id')
-                if url and not url.startswith('http'):
-                    url = urljoin(self.careers_url, url)
-
-                positions.append({
-                    'title': title,
-                    'location': job.get('location', ''),
-                    'url': url,
-                    'posted_date': posted_date,
-                    'description': job.get('description', '') or '',
-                    'requirements': []
-                })
-        
-        except Exception as e:
-            print(f"Error scraping {self.company_name}: {e}")
-        
         return positions
