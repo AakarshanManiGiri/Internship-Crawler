@@ -147,12 +147,9 @@ class GoogleScraper(BaseScraper):
                     if not link:
                         continue
 
-                    if link in seen_urls:
-                        continue
-
                     # Normalize URL
                     url = self._normalize_url(link)
-                    if not url:
+                    if not url or url in seen_urls:
                         continue
 
                     seen_urls.add(url)

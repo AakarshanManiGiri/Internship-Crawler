@@ -67,6 +67,27 @@ class FakeCard:
         
         return FakeInnerLocator()
 
+    def query_selector(self, selector):
+        if selector in {"h3", "h2", "[role='heading']"}:
+            return FakeInnerLocator(text=self._title)
+
+        if selector in {"a[href]", "a"}:
+            return FakeInnerLocator(href=self._href)
+
+        return None
+
+    def query_selector_all(self, selector):
+        if selector == "span":
+            return [FakeLocationSpan(loc) for loc in self._locations]
+
+        if selector in {"h3", "h2", "[role='heading']"}:
+            return [FakeInnerLocator(text=self._title)] if self._title else []
+
+        if selector in {"a[href]", "a"}:
+            return [FakeInnerLocator(href=self._href)] if self._href else []
+
+        return []
+
 
 class FakeLocationContainer:
     """Simulates the location container span.pwO9Dc"""
@@ -113,6 +134,11 @@ class FakeMouse:
         return None
 
 
+class FakeKeyboard:
+    def press(self, key):
+        return None
+
+
 class FakePage:
     """Simulates Playwright page"""
     def __init__(self, cards, raise_on_wait=False, wait_exc=None):
@@ -120,8 +146,15 @@ class FakePage:
         self._raise = raise_on_wait
         self._wait_exc = wait_exc
         self.mouse = FakeMouse()
+        self.keyboard = FakeKeyboard()
 
-    def goto(self, url, timeout=None):
+    def set_default_timeout(self, timeout):
+        return None
+
+    def set_default_navigation_timeout(self, timeout):
+        return None
+
+    def goto(self, url, timeout=None, wait_until=None):
         return None
 
     def wait_for_selector(self, selector, timeout=None):
@@ -129,11 +162,19 @@ class FakePage:
             raise self._wait_exc or Exception('timeout')
         return None
 
+    def wait_for_timeout(self, timeout):
+        return None
+
     def locator(self, selector):
         # Job cards selector: li.lLd3Je
         if selector == 'li.lLd3Je':
             return FakeLocatorCollection(self._cards)
         return FakeLocatorCollection([])
+
+    def query_selector_all(self, selector):
+        if selector == "li":
+            return self._cards
+        return []
 
 
 class FakeBrowser:

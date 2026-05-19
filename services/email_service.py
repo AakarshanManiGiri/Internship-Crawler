@@ -1,3 +1,5 @@
+import logging
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -5,16 +7,25 @@ from typing import List, Dict
 from models.internship import Internship
 
 
+logger = logging.getLogger(__name__)
+
+
 class EmailService:
     def __init__(self):
-        # Load from environment variables
-        self.smtp_server = "smtp.gmail.com"
-        self.smtp_port = 587
-        self.sender_email = "your-email@gmail.com"
-        self.sender_password = "your-app-password"
+        self.smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+        self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        self.sender_email = os.getenv("SENDER_EMAIL", "").strip()
+        self.sender_password = os.getenv("SENDER_PASSWORD", "").strip()
+
+    def is_configured(self) -> bool:
+        return bool(self.sender_email and self.sender_password)
     
     def send_notification(self, user: Dict, internships: List[Internship]):
         """Send email notification about new internships"""
+
+        if not self.is_configured():
+            logger.warning("Skipping email notification because sender credentials are not configured.")
+            return
         
         subject = f"🚀 {len(internships)} New Internship(s) Posted!"
         body = self._create_email_body(internships)
@@ -36,10 +47,10 @@ class EmailService:
                     user['email'],
                     message.as_string()
                 )
-            print(f"Email sent to {user['email']}")
+            logger.info("Email sent to %s", user['email'])
         
         except Exception as e:
-            print(f"Error sending email to {user['email']}: {e}")
+            logger.error("Error sending email to %s: %s", user['email'], e)
     
     def _create_email_body(self, internships: List[Internship]) -> str:
         """Create HTML email body"""

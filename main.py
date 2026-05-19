@@ -1,13 +1,11 @@
 from datetime import datetime
 import importlib
 import logging
-import os
 from pathlib import Path
 from database.db import Database
 from services.notification_service import NotificationService
 from scrapers.base_scraper import BaseScraper
 from models.internship import Internship
-from health_check import print_health_report
 
 # Configure logging
 logging.basicConfig(
@@ -15,6 +13,32 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def print_health_report():
+    """Log the current scraper health summary."""
+    stats = BaseScraper.get_health_stats()
+
+    if not stats:
+        logger.info("No scraper health stats available yet.")
+        return
+
+    logger.info("\n" + "=" * 70)
+    logger.info("SCRAPER HEALTH")
+    logger.info("=" * 70)
+
+    for company, data in stats.items():
+        logger.info(
+            "%s: %s/%s successful runs, %s jobs found, last run=%s",
+            company,
+            data.get('successful_runs', 0),
+            data.get('total_runs', 0),
+            data.get('total_jobs_found', 0),
+            data.get('last_run') or 'never'
+        )
+
+        if data.get('last_error'):
+            logger.info("%s last error: %s", company, data['last_error'])
 
 
 class CrawlerManager:

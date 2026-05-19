@@ -23,6 +23,13 @@ app = FastAPI(
 # Database instance
 db = Database()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Pydantic models for request/response
 class InternshipResponse(BaseModel):
     id: Optional[int] = None
@@ -100,3 +107,9 @@ def get_internships(
         internships=internship_responses,
         filters=filters
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("api.api:app", host="0.0.0.0", port=8000, reload=False)

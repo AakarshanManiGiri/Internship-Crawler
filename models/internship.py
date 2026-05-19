@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 class Internship:
     def __init__(
@@ -9,10 +9,10 @@ class Internship:
         title: str = "",
         location: str = "",
         url: str = "",
-        posted_date: datetime = None,
+        posted_date: Optional[datetime] = None,
         description: str = "",
-        requirements: list = None,
-        created_at: datetime = None,
+        requirements: Optional[List[str]] = None,
+        created_at: Optional[datetime] = None,
         notified: bool = False
     ):
         self.id = id

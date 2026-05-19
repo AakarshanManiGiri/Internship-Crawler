@@ -147,12 +147,12 @@ class MetaScraper(BaseScraper):
                     except:
                         pass
 
-                    if not url or url in seen_urls:
-                        continue
-
                     # Normalize URL
                     if not url.startswith("http"):
                         url = f"https://www.metacareers.com{url}"
+
+                    if url in seen_urls:
+                        continue
 
                     seen_urls.add(url)
 

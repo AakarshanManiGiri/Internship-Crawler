@@ -3,3 +3,6 @@ beautifulsoup4
 python-dateutil
 pytest
 playwright
+fastapi
+uvicorn
+pydantic

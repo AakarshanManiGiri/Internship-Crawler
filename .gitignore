@@ -1,12 +1,23 @@
-```gitignore
-# Environment variables (SENSITIVE!)
+# Environment files and secrets
 .env
+.env.*
 *.env
+*.env.*
+*.secret
+secrets.*
+credentials.*
+*.key
+*.pem
+*.p12
+*.pfx
 
-# Database files (contains user data!)
+# Local databases and user data
 *.db
 *.sqlite
 *.sqlite3
+internships.db
+*.db-journal
+*.sqlite-journal
 
 # Python
 __pycache__/
@@ -30,8 +41,9 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual environments
 venv/
+.venv/
 env/
 ENV/
 env.bak/
@@ -59,4 +71,5 @@ logs/
 htmlcov/
 .coverage
 .coverage.*
-```
+.pytest_cache/
+.mypy_cache/
