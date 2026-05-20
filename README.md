@@ -9,7 +9,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![CodeFactor](https://www.codefactor.io/repository/github/aakarshanmanigiri/internship-crawler/badge)](https://www.codefactor.io/repository/github/aakarshanmanigiri/internship-crawler)
 
-Never miss an internship opportunity again! This tool automatically monitors career pages from top tech companies and notifies you the moment new positions are posted.
+
 
 
 ---
